@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { searchFoods, lookupBarcode, createCustomFood } from "../api/foods";
 import { createLogEntry } from "../api/logs";
-import type { FoodOut, MealType } from "../api/types";
+import { listRecipes } from "../api/recipes";
+import type { FoodOut, MealType, RecipeOut } from "../api/types";
 import { ApiError } from "../api/client";
 
 export function LogMealPage() {
@@ -13,10 +14,19 @@ export function LogMealPage() {
   const [results, setResults] = useState<FoodOut[]>([]);
   const [selected, setSelected] = useState<FoodOut | null>(null);
   const [quantityG, setQuantityG] = useState(100);
+  const [recipes, setRecipes] = useState<RecipeOut[]>([]);
+  const [selectedRecipe, setSelectedRecipe] = useState<RecipeOut | null>(null);
+  const [quantityServings, setQuantityServings] = useState(1);
   const [mealType, setMealType] = useState<MealType>("breakfast");
   const [error, setError] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
   const [showCustomForm, setShowCustomForm] = useState(false);
+
+  useEffect(() => {
+    listRecipes()
+      .then(setRecipes)
+      .catch(() => setRecipes([]));
+  }, []);
 
   async function handleSearch(e: FormEvent) {
     e.preventDefault();
@@ -50,15 +60,24 @@ export function LogMealPage() {
 
   async function handleLog(e: FormEvent) {
     e.preventDefault();
-    if (!selected) return;
+    if (!selected && !selectedRecipe) return;
     setError(null);
     try {
-      await createLogEntry({
-        food_id: selected.id,
-        quantity_g: quantityG,
-        meal_type: mealType,
-        logged_at: new Date().toISOString(),
-      });
+      await createLogEntry(
+        selectedRecipe
+          ? {
+              recipe_id: selectedRecipe.id,
+              quantity_servings: quantityServings,
+              meal_type: mealType,
+              logged_at: new Date().toISOString(),
+            }
+          : {
+              food_id: selected!.id,
+              quantity_g: quantityG,
+              meal_type: mealType,
+              logged_at: new Date().toISOString(),
+            }
+      );
       navigate("/", { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to log entry");
@@ -69,8 +88,29 @@ export function LogMealPage() {
     <div className="page">
       <h2>Log food</h2>
 
-      {!selected && (
+      {!selected && !selectedRecipe && (
         <>
+          {recipes.length > 0 && (
+            <>
+              <p className="hint">Recipes</p>
+              <ul className="food-results">
+                {recipes.map((recipe) => (
+                  <li key={recipe.id}>
+                    <button className="food-result-button" onClick={() => setSelectedRecipe(recipe)}>
+                      <strong>{recipe.name}</strong>
+                      {recipe.nutrients_per_serving && (
+                        <span className="hint">
+                          {" "}
+                          · {Math.round(recipe.nutrients_per_serving.calories_kcal)} kcal/serving
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+
           <form onSubmit={handleSearch} className="inline-form">
             <input
               placeholder="Search foods…"
@@ -124,25 +164,48 @@ export function LogMealPage() {
         </>
       )}
 
-      {selected && (
+      {(selected || selectedRecipe) && (
         <form onSubmit={handleLog} className="log-form">
-          <h3>{selected.name}</h3>
-          {selected.nutrients && (
+          <h3>{selected ? selected.name : selectedRecipe!.name}</h3>
+          {selected?.nutrients && (
             <p className="hint">
               {Math.round(selected.nutrients.calories_kcal)} kcal, {selected.nutrients.protein_g}g
               protein, {selected.nutrients.carbs_g}g carbs, {selected.nutrients.fat_g}g fat — per 100g
             </p>
           )}
-          <label>
-            Quantity (g)
-            <input
-              type="number"
-              min={1}
-              value={quantityG}
-              onChange={(e) => setQuantityG(Number(e.target.value))}
-              required
-            />
-          </label>
+          {selectedRecipe?.nutrients_per_serving && (
+            <p className="hint">
+              {Math.round(selectedRecipe.nutrients_per_serving.calories_kcal)} kcal,{" "}
+              {selectedRecipe.nutrients_per_serving.protein_g}g protein,{" "}
+              {selectedRecipe.nutrients_per_serving.carbs_g}g carbs,{" "}
+              {selectedRecipe.nutrients_per_serving.fat_g}g fat — per serving
+            </p>
+          )}
+          {selected && (
+            <label>
+              Quantity (g)
+              <input
+                type="number"
+                min={1}
+                value={quantityG}
+                onChange={(e) => setQuantityG(Number(e.target.value))}
+                required
+              />
+            </label>
+          )}
+          {selectedRecipe && (
+            <label>
+              Servings
+              <input
+                type="number"
+                min={0.25}
+                step={0.25}
+                value={quantityServings}
+                onChange={(e) => setQuantityServings(Number(e.target.value))}
+                required
+              />
+            </label>
+          )}
           <label>
             Meal
             <select value={mealType} onChange={(e) => setMealType(e.target.value as MealType)}>
@@ -154,7 +217,13 @@ export function LogMealPage() {
           </label>
           {error && <p className="error">{error}</p>}
           <div className="form-actions">
-            <button type="button" onClick={() => setSelected(null)}>
+            <button
+              type="button"
+              onClick={() => {
+                setSelected(null);
+                setSelectedRecipe(null);
+              }}
+            >
               Back
             </button>
             <button type="submit">Log it</button>

@@ -12,11 +12,67 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db.base import new_uuid
 from app.models.food import Food, FoodSource
+from app.models.food_micronutrients import FoodMicronutrient
 from app.models.food_nutrients import FoodNutrients
+
+# Open Food Facts nutriment field (per 100g) -> (our nutrient_reference code,
+# multiplier to convert OFF's value into that code's unit). OFF reports most
+# *_100g fields in grams regardless of the nutrient's natural scale, so mg/mcg
+# nutrients need scaling up. Best-effort — fine for a personal-use app, not a
+# clinical source.
+OFF_MICRONUTRIENT_FIELDS: dict[str, tuple[str, float]] = {
+    "fiber_100g": ("FIBTG", 1),
+    "sugars_100g": ("SUGAR", 1),
+    "saturated-fat_100g": ("FASAT", 1),
+    "sodium_100g": ("NA", 1000),
+    "cholesterol_100g": ("CHOLE", 1000),
+    "potassium_100g": ("K", 1000),
+    "calcium_100g": ("CA", 1000),
+    "iron_100g": ("FE", 1000),
+    "vitamin-c_100g": ("VITC", 1000),
+    "vitamin-d_100g": ("VITD", 1_000_000),
+    "vitamin-a_100g": ("VITA", 1_000_000),
+}
+
+# USDA FDC nutrientName -> our nutrient_reference code. FDC values are
+# already in each nutrient's standard unit (g/mg/mcg), matching
+# nutrient_reference — no scaling needed.
+USDA_MICRONUTRIENT_FIELDS: dict[str, str] = {
+    "Fiber, total dietary": "FIBTG",
+    "Sugars, total including NLEA": "SUGAR",
+    "Sugars, total": "SUGAR",
+    "Fatty acids, total saturated": "FASAT",
+    "Sodium, Na": "NA",
+    "Cholesterol": "CHOLE",
+    "Potassium, K": "K",
+    "Calcium, Ca": "CA",
+    "Iron, Fe": "FE",
+    "Vitamin C, total ascorbic acid": "VITC",
+    "Vitamin D (D2 + D3)": "VITD",
+    "Vitamin A, RAE": "VITA",
+}
 
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _extract_off_micronutrients(nutriments: dict) -> dict[str, float]:
+    result: dict[str, float] = {}
+    for field, (code, multiplier) in OFF_MICRONUTRIENT_FIELDS.items():
+        value = nutriments.get(field)
+        if value is not None:
+            result[code] = round(value * multiplier, 4)
+    return result
+
+
+def _extract_usda_micronutrients(nutrients_by_name: dict[str, float]) -> dict[str, float]:
+    result: dict[str, float] = {}
+    for name, code in USDA_MICRONUTRIENT_FIELDS.items():
+        value = nutrients_by_name.get(name)
+        if value is not None and code not in result:
+            result[code] = round(value, 4)
+    return result
 
 
 def search_local(db: Session, query: str, limit: int = 25) -> list[Food]:
@@ -55,6 +111,7 @@ def _cache_food(
     protein_g: float,
     carbs_g: float,
     fat_g: float,
+    micronutrients: dict[str, float] | None = None,
 ) -> Food:
     now = _now()
     food = Food(
@@ -84,6 +141,18 @@ def _cache_food(
             updated_at=now,
         )
     )
+
+    for code, amount in (micronutrients or {}).items():
+        db.add(
+            FoodMicronutrient(
+                id=new_uuid(),
+                food_id=food.id,
+                nutrient_code=code,
+                amount_per_100g=amount,
+                updated_at=now,
+            )
+        )
+
     db.commit()
     db.refresh(food)
     return food
@@ -129,6 +198,7 @@ def fetch_off_by_barcode(db: Session, barcode: str) -> Food | None:
         protein_g=nutriments.get("proteins_100g", 0.0) or 0.0,
         carbs_g=nutriments.get("carbohydrates_100g", 0.0) or 0.0,
         fat_g=nutriments.get("fat_100g", 0.0) or 0.0,
+        micronutrients=_extract_off_micronutrients(nutriments),
     )
 
 
@@ -194,6 +264,7 @@ def search_usda(db: Session, query: str, limit: int = 10) -> list[Food]:
                 protein_g=nutrients.get("Protein", 0.0) or 0.0,
                 carbs_g=nutrients.get("Carbohydrate, by difference", 0.0) or 0.0,
                 fat_g=nutrients.get("Total lipid (fat)", 0.0) or 0.0,
+                micronutrients=_extract_usda_micronutrients(nutrients),
             )
         )
     return cached

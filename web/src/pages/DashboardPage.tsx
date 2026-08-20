@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { getDailySummary, deleteLogEntry } from "../api/logs";
 import { getProfile } from "../api/profile";
-import type { DailySummary, MealType } from "../api/types";
+import { getNutrientReference } from "../api/nutrients";
+import type { DailySummary, MealType, NutrientReferenceOut } from "../api/types";
 import { ApiError } from "../api/client";
 
 // The server buckets log entries into a calendar day using the user's
@@ -27,6 +28,7 @@ const MEAL_LABELS: Record<MealType, string> = {
 export function DashboardPage() {
   const [date, setDate] = useState<string | null>(null);
   const [summary, setSummary] = useState<DailySummary | null>(null);
+  const [nutrientReference, setNutrientReference] = useState<NutrientReferenceOut[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -34,6 +36,9 @@ export function DashboardPage() {
     getProfile()
       .then((profile) => setDate(todayInTimezone(profile.timezone)))
       .catch(() => setDate(todayInTimezone("UTC")));
+    getNutrientReference()
+      .then(setNutrientReference)
+      .catch(() => setNutrientReference([]));
   }, []);
 
   async function load() {
@@ -112,7 +117,7 @@ export function DashboardPage() {
                 {entriesByMeal[meal].map((entry) => (
                   <li key={entry.id}>
                     <span>
-                      {entry.food?.name ?? "Recipe"}
+                      {entry.food?.name ?? entry.recipe_name ?? "Unknown"}
                       {entry.quantity_g != null && ` — ${entry.quantity_g}g`}
                       {entry.quantity_servings != null && ` — ${entry.quantity_servings} servings`}
                     </span>
@@ -124,6 +129,23 @@ export function DashboardPage() {
               </ul>
             </div>
           ))}
+
+          {Object.keys(summary.micronutrient_totals).length > 0 && (
+            <div className="targets-card">
+              <h3>Micronutrients</h3>
+              <ul>
+                {Object.entries(summary.micronutrient_totals).map(([code, amount]) => {
+                  const ref = nutrientReference.find((n) => n.code === code);
+                  return (
+                    <li key={code}>
+                      {ref?.display_name ?? code}: {amount} {ref?.unit ?? ""}
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="hint">Recipe-based entries aren't included yet.</p>
+            </div>
+          )}
         </>
       )}
     </div>

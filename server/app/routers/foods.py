@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.db.base import new_uuid
 from app.db.session import get_db
 from app.models.food import Food, FoodSource
+from app.models.food_micronutrients import FoodMicronutrient
 from app.models.food_nutrients import FoodNutrients
 from app.models.user import User
 from app.schemas.food import CustomFoodCreate, CustomFoodUpdate, FoodOut
@@ -17,9 +18,13 @@ router = APIRouter(prefix="/api/v1/foods", tags=["foods"])
 
 def _to_food_out(food: Food, db: Session) -> FoodOut:
     nutrients = db.query(FoodNutrients).filter(FoodNutrients.food_id == food.id).first()
+    micronutrients = (
+        db.query(FoodMicronutrient).filter(FoodMicronutrient.food_id == food.id).all()
+    )
     out = FoodOut.model_validate(food)
     if nutrients:
         out.nutrients = nutrients
+    out.micronutrients = micronutrients
     return out
 
 

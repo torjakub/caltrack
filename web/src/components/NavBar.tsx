@@ -14,6 +14,9 @@ export function NavBar() {
       <NavLink to="/log" className={({ isActive }) => (isActive ? "active" : "")}>
         Log food
       </NavLink>
+      <NavLink to="/recipes" className={({ isActive }) => (isActive ? "active" : "")}>
+        Recipes
+      </NavLink>
       <NavLink to="/profile" className={({ isActive }) => (isActive ? "active" : "")}>
         Profile
       </NavLink>

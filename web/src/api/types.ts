@@ -79,6 +79,7 @@ export interface LogEntryOut {
   notes: string | null;
   updated_at: string;
   food: FoodOut | null;
+  recipe_name: string | null;
 }
 
 export interface NutrientTotals {
@@ -92,5 +93,37 @@ export interface DailySummary {
   date: string;
   totals: NutrientTotals;
   targets: NutrientTotals | null;
+  micronutrient_totals: Record<string, number>;
   entries: LogEntryOut[];
+}
+
+export interface NutrientReferenceOut {
+  code: string;
+  display_name: string;
+  unit: string;
+  category: string;
+}
+
+export interface RecipeItemOut {
+  id: string;
+  food_id: string;
+  quantity_g: number;
+}
+
+export interface RecipeNutrientsPerServing {
+  calories_kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+}
+
+export interface RecipeOut {
+  id: string;
+  user_id: string;
+  name: string;
+  servings: number;
+  instructions: string | null;
+  updated_at: string;
+  items: RecipeItemOut[];
+  nutrients_per_serving: RecipeNutrientsPerServing | null;
 }

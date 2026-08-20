@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db.base import new_uuid
 from app.db.session import get_db
+from app.models.food_micronutrients import FoodMicronutrient
 from app.models.food_nutrients import FoodNutrients
 from app.models.log_entry import LogEntry
 from app.models.user import User
@@ -47,6 +48,12 @@ def _to_log_out(entry: LogEntry, db: Session) -> LogEntryOut:
         food = db.get(Food, entry.food_id)
         if food:
             out.food = _to_food_out(food, db)
+    elif entry.recipe_id:
+        from app.models.recipe import Recipe
+
+        recipe = db.get(Recipe, entry.recipe_id)
+        if recipe:
+            out.recipe_name = recipe.name
     return out
 
 
@@ -95,6 +102,21 @@ def _sum_totals(entries: list[LogEntry], db: Session) -> NutrientTotals:
     return totals
 
 
+def _sum_micronutrients(entries: list[LogEntry], db: Session) -> dict[str, float]:
+    """Food-based entries only for v1 — recipe micronutrient rollup would
+    need per-ingredient micronutrient data, which USDA/OFF coverage is too
+    inconsistent to rely on yet."""
+    totals: dict[str, float] = {}
+    for entry in entries:
+        if not (entry.food_id and entry.quantity_g is not None):
+            continue
+        factor = entry.quantity_g / 100.0
+        micros = db.query(FoodMicronutrient).filter(FoodMicronutrient.food_id == entry.food_id).all()
+        for m in micros:
+            totals[m.nutrient_code] = totals.get(m.nutrient_code, 0.0) + m.amount_per_100g * factor
+    return {code: round(amount, 2) for code, amount in totals.items()}
+
+
 @router.get("/summary", response_model=DailySummary)
 def daily_summary(
     date_: date = Query(alias="date"),
@@ -122,7 +144,11 @@ def daily_summary(
             fat_g=active_targets.fat_g,
         )
     return DailySummary(
-        date=date_, totals=totals, targets=targets, entries=[_to_log_out(e, db) for e in entries]
+        date=date_,
+        totals=totals,
+        targets=targets,
+        micronutrient_totals=_sum_micronutrients(entries, db),
+        entries=[_to_log_out(e, db) for e in entries],
     )
 
 

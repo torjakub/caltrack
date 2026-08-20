@@ -46,6 +46,7 @@ class LogEntryOut(BaseModel):
     notes: str | None
     updated_at: datetime
     food: FoodOut | None = None
+    recipe_name: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -61,4 +62,5 @@ class DailySummary(BaseModel):
     date: date
     totals: NutrientTotals
     targets: NutrientTotals | None
+    micronutrient_totals: dict[str, float] = {}
     entries: list[LogEntryOut]
