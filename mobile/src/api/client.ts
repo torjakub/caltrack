@@ -1,23 +1,15 @@
-declare global {
-  interface Window {
-    __CALTRACK_CONFIG__?: { API_BASE_URL?: string };
-  }
-}
-
-const API_BASE_URL =
-  window.__CALTRACK_CONFIG__?.API_BASE_URL ||
-  import.meta.env.VITE_API_BASE_URL ||
-  "http://localhost:8000";
+import * as SecureStore from "expo-secure-store";
+import { useSessionStore } from "../store/session";
 
 const TOKEN_KEY = "caltrack_access_token";
 
-export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+export async function getToken(): Promise<string | null> {
+  return SecureStore.getItemAsync(TOKEN_KEY);
 }
 
-export function setToken(token: string | null): void {
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
+export async function setToken(token: string | null): Promise<void> {
+  if (token) await SecureStore.setItemAsync(TOKEN_KEY, token);
+  else await SecureStore.deleteItemAsync(TOKEN_KEY);
 }
 
 export class ApiError extends Error {
@@ -27,6 +19,8 @@ export class ApiError extends Error {
     this.status = status;
   }
 }
+
+export class NoServerConfiguredError extends Error {}
 
 // FastAPI's `detail` is a plain string for most errors, but for 422
 // validation failures it's an array of {loc, msg, type} objects — render
@@ -44,18 +38,18 @@ function formatErrorDetail(detail: unknown, fallback: string): string {
   return fallback;
 }
 
-export async function apiFetch<T>(
-  path: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const token = getToken();
+export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const baseUrl = useSessionStore.getState().serverBaseUrl;
+  if (!baseUrl) throw new NoServerConfiguredError("No server configured");
+
+  const token = await getToken();
   const headers: Record<string, string> = {
     ...(options.body ? { "Content-Type": "application/json" } : {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(options.headers as Record<string, string> | undefined),
   };
 
-  const res = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+  const res = await fetch(`${baseUrl}${path}`, { ...options, headers });
 
   if (!res.ok) {
     let detail: unknown = undefined;
@@ -63,7 +57,7 @@ export async function apiFetch<T>(
       const body = await res.json();
       detail = body.detail;
     } catch {
-      // response body wasn't JSON — keep statusText
+      // response body wasn't JSON
     }
     throw new ApiError(res.status, formatErrorDetail(detail, res.statusText));
   }
