@@ -9,6 +9,18 @@ A self-hosted, open-source nutrition/calorie tracker — an alternative to Fitat
 - **Fully usable with zero LLM configured**: manual entry, barcode lookup, and search all work standalone. LLM only adds OCR-assist and meal/day analysis on top.
 - **Offline-first mobile**: the mobile app keeps its own local database, so logging works with no connectivity at all — it syncs back to your server whenever it's reachable.
 
+## Screenshots (web)
+
+| Dashboard | Log food |
+|---|---|
+| ![Dashboard](docs/screenshots/dashboard.jpg) | ![Log food](docs/screenshots/log-food.jpg) |
+
+| Recipes | Profile |
+|---|---|
+| ![Recipes](docs/screenshots/recipes.jpg) | ![Profile](docs/screenshots/profile.jpg) |
+
+*(Demo data — not a real person's nutrition log.)*
+
 ## Architecture
 
 Three components:
