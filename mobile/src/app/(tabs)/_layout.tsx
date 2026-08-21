@@ -2,6 +2,7 @@ import { Redirect, Tabs } from "expo-router";
 import { Text } from "react-native";
 import { colors } from "../../constants/theme";
 import { useSessionStore } from "../../store/session";
+import { useAutoSync } from "../../hooks/useAutoSync";
 
 function Icon({ label, focused }: { label: string; focused: boolean }) {
   return <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.5 }}>{label}</Text>;
@@ -9,6 +10,7 @@ function Icon({ label, focused }: { label: string; focused: boolean }) {
 
 export default function TabsLayout() {
   const isAuthenticated = useSessionStore((s) => s.isAuthenticated);
+  useAutoSync();
 
   if (!isAuthenticated) {
     return <Redirect href="/login" />;

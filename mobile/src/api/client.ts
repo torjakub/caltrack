@@ -59,6 +59,15 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
     } catch {
       // response body wasn't JSON
     }
+
+    // A 401 on an authenticated request means the stored token is invalid
+    // or expired (e.g. the server's database was reset, or the token
+    // simply expired) — log out locally so the app recovers to the login
+    // screen instead of surfacing a raw error on every subsequent call.
+    if (res.status === 401) {
+      await useSessionStore.getState().logout();
+    }
+
     throw new ApiError(res.status, formatErrorDetail(detail, res.statusText));
   }
 
