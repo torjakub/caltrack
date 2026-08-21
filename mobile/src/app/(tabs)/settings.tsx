@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { useFocusEffect, useRouter } from "expo-router";
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { eq } from "drizzle-orm";
 import * as Device from "expo-device";
@@ -11,6 +11,7 @@ import { db } from "../../db/client";
 import { localMeta } from "../../db/schema";
 import { runSync } from "../../lib/sync";
 import { listUnresolvedConflicts } from "../../db/repo/conflicts";
+import { resetLocalData } from "../../db/repo/maintenance";
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -23,6 +24,7 @@ export default function SettingsScreen() {
   const [conflictCount, setConflictCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [resetting, setResetting] = useState(false);
 
   const load = useCallback(async () => {
     const [meta] = await db.select().from(localMeta).where(eq(localMeta.id, 1)).limit(1);
@@ -51,6 +53,29 @@ export default function SettingsScreen() {
       setSyncMessage(result.error ?? "Sync failed.");
     }
     await load();
+  }
+
+  function handleResetLocalData() {
+    Alert.alert(
+      "Reset local data?",
+      "Deletes all foods, logs, and recipes cached on this device, then re-downloads whatever belongs to your account from the server. Use this if local data ever gets out of sync with your account (e.g. after switching servers or accounts on this device).",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Reset",
+          style: "destructive",
+          onPress: async () => {
+            setResetting(true);
+            setSyncMessage(null);
+            await resetLocalData();
+            const result = await runSync();
+            setResetting(false);
+            setSyncMessage(result.ok ? "Local data reset and re-synced." : result.error ?? "Reset failed.");
+            await load();
+          },
+        },
+      ]
+    );
   }
 
   return (
@@ -83,6 +108,25 @@ export default function SettingsScreen() {
               <ActivityIndicator color={colors.primaryText} />
             ) : (
               <Text style={styles.primaryButtonText}>{isOnline ? "Sync now" : "Offline"}</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Danger zone</Text>
+          <Text style={styles.hint}>
+            If local data ever looks wrong or incomplete for your account, resetting clears the local
+            cache and re-downloads everything fresh from the server.
+          </Text>
+          <TouchableOpacity
+            style={[styles.button, styles.dangerButton, !isOnline && styles.buttonDisabled]}
+            onPress={handleResetLocalData}
+            disabled={!isOnline || resetting}
+          >
+            {resetting ? (
+              <ActivityIndicator color={colors.error} />
+            ) : (
+              <Text style={styles.buttonText}>Reset local data</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -125,6 +169,7 @@ const styles = StyleSheet.create({
   primaryButton: { backgroundColor: colors.primary },
   primaryButtonText: { color: colors.primaryText, fontWeight: "700" },
   logoutButton: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.error },
+  dangerButton: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.error },
   conflictBanner: { backgroundColor: "#4a3c1a", borderRadius: 8, padding: 10 },
   conflictBannerText: { color: "#e0c26a", fontWeight: "600", fontSize: 13 },
 });
