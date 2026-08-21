@@ -1,6 +1,6 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useFocusEffect } from "expo-router";
-import { FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../../constants/theme";
 import { useSessionStore } from "../../store/session";
@@ -8,6 +8,9 @@ import { useIsOnline } from "../../hooks/useIsOnline";
 import { todayInTimezone } from "../../lib/dates";
 import { computeDailyTotals, deleteLogEntryLocal, listLogsForDate } from "../../db/repo/logs";
 import { getActiveTargetsLocal } from "../../db/repo/profile";
+import { getLlmStatus, analysisDaily, mealReview } from "../../api/llm";
+import type { MealInsight, PeriodAnalysis } from "../../api/llm";
+import { runSync } from "../../lib/sync";
 import type { LogEntryOut, MealType, NutrientTotals, UserTargetsOut } from "../../api/types";
 
 const MEAL_LABELS: Record<MealType, string> = {
@@ -28,6 +31,14 @@ export default function DashboardScreen() {
   const [totals, setTotals] = useState<NutrientTotals | null>(null);
   const [targets, setTargets] = useState<UserTargetsOut | null>(null);
   const [loading, setLoading] = useState(true);
+  const [llmAvailable, setLlmAvailable] = useState(false);
+
+  useEffect(() => {
+    if (!isOnline) return;
+    getLlmStatus()
+      .then((s) => setLlmAvailable(s.available))
+      .catch(() => setLlmAvailable(false));
+  }, [isOnline]);
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -81,6 +92,7 @@ export default function DashboardScreen() {
                 {!targets && <Text style={styles.hint}>No targets yet — set them up on the web app.</Text>}
               </View>
             )}
+            {llmAvailable && <DailyAnalysisSection date={date} />}
           </>
         }
         renderItem={({ item: meal }) => (
@@ -88,14 +100,17 @@ export default function DashboardScreen() {
             <Text style={styles.mealTitle}>{MEAL_LABELS[meal]}</Text>
             {entriesByMeal[meal].length === 0 && <Text style={styles.hint}>Nothing logged</Text>}
             {entriesByMeal[meal].map((entry) => (
-              <View key={entry.id} style={styles.entryRow}>
-                <Text style={styles.entryText}>
-                  {entry.food?.name ?? entry.recipe_name ?? "Unknown"}
-                  {entry.quantity_g != null ? ` — ${entry.quantity_g}g` : ""}
-                </Text>
-                <TouchableOpacity onPress={() => handleDelete(entry.id)}>
-                  <Text style={styles.removeText}>Remove</Text>
-                </TouchableOpacity>
+              <View key={entry.id} style={styles.entryCard}>
+                <View style={styles.entryRow}>
+                  <Text style={styles.entryText}>
+                    {entry.food?.name ?? entry.recipe_name ?? "Unknown"}
+                    {entry.quantity_g != null ? ` — ${entry.quantity_g}g` : ""}
+                  </Text>
+                  <TouchableOpacity onPress={() => handleDelete(entry.id)}>
+                    <Text style={styles.removeText}>Remove</Text>
+                  </TouchableOpacity>
+                </View>
+                {llmAvailable && <MealReviewButton logEntryId={entry.id} />}
               </View>
             ))}
           </View>
@@ -104,6 +119,81 @@ export default function DashboardScreen() {
         onRefresh={load}
       />
     </SafeAreaView>
+  );
+}
+
+function DailyAnalysisSection({ date }: { date: string }) {
+  const [analysis, setAnalysis] = useState<PeriodAnalysis | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleAnalyze() {
+    setLoading(true);
+    setError(null);
+    try {
+      // The LLM endpoints only see server-side data — this device's own
+      // entries may still be local-only, so sync first or the analysis
+      // would silently miss whatever hasn't been pushed yet.
+      await runSync();
+      setAnalysis(await analysisDaily(date));
+    } catch {
+      setError("Analysis failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>Daily analysis</Text>
+      {!analysis && (
+        <TouchableOpacity style={styles.smallButton} onPress={handleAnalyze} disabled={loading}>
+          {loading ? <ActivityIndicator color={colors.primaryText} /> : <Text style={styles.smallButtonText}>Analyze today</Text>}
+        </TouchableOpacity>
+      )}
+      {error && <Text style={styles.errorText}>{error}</Text>}
+      {analysis && (
+        <>
+          <Text style={styles.entryText}>{analysis.summary}</Text>
+          {analysis.suggestions.map((s, i) => (
+            <Text key={i} style={styles.hint}>
+              • {s.food}: {s.reason}
+            </Text>
+          ))}
+        </>
+      )}
+    </View>
+  );
+}
+
+function MealReviewButton({ logEntryId }: { logEntryId: string }) {
+  const [insight, setInsight] = useState<MealInsight | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [shown, setShown] = useState(false);
+
+  async function handlePress() {
+    setShown(true);
+    if (insight) return;
+    setLoading(true);
+    try {
+      // Same reasoning as DailyAnalysisSection — this entry may only exist
+      // locally so far.
+      await runSync();
+      setInsight(await mealReview(logEntryId));
+    } catch {
+      setInsight({ summary: "Review failed.", positives: [], concerns: [], suggestions: [] });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <View>
+      <TouchableOpacity onPress={handlePress}>
+        <Text style={styles.reviewLink}>Review</Text>
+      </TouchableOpacity>
+      {shown && (loading ? <ActivityIndicator /> : <Text style={styles.hint}>{insight?.summary}</Text>)}
+    </View>
   );
 }
 
@@ -136,17 +226,25 @@ const styles = StyleSheet.create({
   hint: { color: colors.textMuted, fontSize: 13 },
   mealSection: { marginBottom: 16 },
   mealTitle: { color: colors.text, fontWeight: "700", fontSize: 16, marginBottom: 6 },
-  entryRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+  entryCard: {
     backgroundColor: colors.card,
     borderRadius: 8,
     padding: 10,
     marginBottom: 6,
+    gap: 4,
+  },
+  entryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   entryText: { color: colors.text, flex: 1 },
   removeText: { color: colors.primary },
   offlineBanner: { backgroundColor: "#4a3c1a", padding: 8 },
   offlineText: { color: "#e0c26a", fontSize: 12, textAlign: "center" },
+  cardTitle: { color: colors.text, fontWeight: "700", marginBottom: 4 },
+  smallButton: { backgroundColor: colors.primary, borderRadius: 8, padding: 10, alignItems: "center" },
+  smallButtonText: { color: colors.primaryText, fontWeight: "700", fontSize: 13 },
+  errorText: { color: colors.error, fontSize: 13 },
+  reviewLink: { color: colors.primary, fontSize: 13, fontWeight: "600" },
 });

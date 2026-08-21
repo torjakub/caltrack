@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.routers import auth, foods, health, logs, nutrients, profile, recipes, sync, targets
+from app.routers import auth, foods, health, llm, logs, nutrients, profile, recipes, sync, targets
 
 app = FastAPI(title="calTrack API", version="0.1.0")
 
@@ -23,3 +23,4 @@ app.include_router(logs.router)
 app.include_router(recipes.router)
 app.include_router(nutrients.router)
 app.include_router(sync.router)
+app.include_router(llm.router)

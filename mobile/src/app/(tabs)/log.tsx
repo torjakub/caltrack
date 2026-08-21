@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "expo-router";
 import {
   ActivityIndicator,
@@ -10,10 +10,12 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import * as ImagePicker from "expo-image-picker";
 import { colors } from "../../constants/theme";
 import { useSessionStore } from "../../store/session";
 import { useIsOnline } from "../../hooks/useIsOnline";
 import * as foodsApi from "../../api/foods";
+import { getLlmStatus, ocrNutritionLabel } from "../../api/llm";
 import { ApiError, NoServerConfiguredError } from "../../api/client";
 import {
   cacheRemoteFood,
@@ -58,7 +60,7 @@ export default function LogFoodScreen() {
     setError(null);
     setSearching(true);
     try {
-      const local = await searchFoodsLocal(query.trim());
+      const local = await searchFoodsLocal(query.trim(), activeUserId);
       let combined = local;
       if (isOnline) {
         try {
@@ -86,7 +88,7 @@ export default function LogFoodScreen() {
     setError(null);
     setSearching(true);
     try {
-      let food = await getFoodByBarcodeLocal(barcode.trim());
+      let food = await getFoodByBarcodeLocal(barcode.trim(), activeUserId);
       if (!food && isOnline) {
         try {
           food = await foodsApi.lookupBarcodeRemote(barcode.trim());
@@ -246,6 +248,42 @@ function CustomFoodForm({ userId, onCreated }: { userId: string; onCreated: (foo
   const [protein, setProtein] = useState("0");
   const [carbs, setCarbs] = useState("0");
   const [fat, setFat] = useState("0");
+  const [llmAvailable, setLlmAvailable] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const isOnline = useIsOnline();
+
+  useEffect(() => {
+    if (!isOnline) return;
+    getLlmStatus()
+      .then((s) => setLlmAvailable(s.available))
+      .catch(() => setLlmAvailable(false));
+  }, [isOnline]);
+
+  async function handleScanPhoto() {
+    setScanError(null);
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      setScanError("Camera permission denied.");
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({ quality: 0.7 });
+    if (result.canceled) return;
+
+    setScanning(true);
+    try {
+      const parsed = await ocrNutritionLabel(result.assets[0].uri);
+      if (parsed.name) setName(parsed.name);
+      if (parsed.calories_kcal != null) setCalories(String(parsed.calories_kcal));
+      if (parsed.protein_g != null) setProtein(String(parsed.protein_g));
+      if (parsed.carbs_g != null) setCarbs(String(parsed.carbs_g));
+      if (parsed.fat_g != null) setFat(String(parsed.fat_g));
+    } catch {
+      setScanError("Couldn't read that label — enter values manually.");
+    } finally {
+      setScanning(false);
+    }
+  }
 
   async function handleCreate() {
     if (!name.trim()) return;
@@ -264,6 +302,16 @@ function CustomFoodForm({ userId, onCreated }: { userId: string; onCreated: (foo
 
   return (
     <View style={styles.customCard}>
+      {llmAvailable && (
+        <TouchableOpacity style={styles.scanButton} onPress={handleScanPhoto} disabled={scanning}>
+          {scanning ? (
+            <ActivityIndicator color={colors.primaryText} />
+          ) : (
+            <Text style={styles.scanButtonText}>📷 Scan nutrition label</Text>
+          )}
+        </TouchableOpacity>
+      )}
+      {scanError && <Text style={styles.error}>{scanError}</Text>}
       <Text style={styles.label}>Name</Text>
       <TextInput style={styles.input} value={name} onChangeText={setName} />
       <Text style={styles.hint}>Nutrition values are per 100g</Text>
@@ -349,5 +397,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   macroGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  scanButton: { backgroundColor: colors.primary, borderRadius: 8, padding: 10, alignItems: "center" },
+  scanButtonText: { color: colors.primaryText, fontWeight: "700" },
   macroField: { width: "47%" },
 });

@@ -8,22 +8,38 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-export async function searchFoodsLocal(query: string, limit = 25): Promise<FoodOut[]> {
+// A custom food only ever belongs to whoever created it — without this
+// filter, a different local account's custom foods (still sitting in the
+// shared on-device cache) could get selected and logged by the current
+// user, producing a food reference that can never sync (the server would
+// reject it as not belonging to this account). Non-custom (external,
+// server-cached) foods have no owner and stay visible to everyone.
+function ownedOrShared(userId: string) {
+  return or(eq(foods.isCustom, false), eq(foods.createdByUserId, userId));
+}
+
+export async function searchFoodsLocal(query: string, userId: string, limit = 25): Promise<FoodOut[]> {
   const like_ = `%${query}%`;
   const rows = await db
     .select()
     .from(foods)
-    .where(and(isNull(foods.deletedAt), or(like(foods.name, like_), like(foods.brand, like_))))
+    .where(
+      and(
+        isNull(foods.deletedAt),
+        or(like(foods.name, like_), like(foods.brand, like_)),
+        ownedOrShared(userId)
+      )
+    )
     .orderBy(desc(foods.isCustom), foods.name)
     .limit(limit);
   return Promise.all(rows.map((f) => hydrateFood(f.id, f)));
 }
 
-export async function getFoodByBarcodeLocal(barcode: string): Promise<FoodOut | null> {
+export async function getFoodByBarcodeLocal(barcode: string, userId: string): Promise<FoodOut | null> {
   const rows = await db
     .select()
     .from(foods)
-    .where(and(eq(foods.barcode, barcode), isNull(foods.deletedAt)))
+    .where(and(eq(foods.barcode, barcode), isNull(foods.deletedAt), ownedOrShared(userId)))
     .orderBy(desc(foods.isCustom))
     .limit(1);
   if (rows.length === 0) return null;

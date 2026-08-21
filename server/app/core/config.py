@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     ollama_text_model: str = ""
     ollama_vision_model: str = ""
 
+    cohere_api_key: str = ""
+    cohere_api_base_url: str = "https://api.cohere.com"
+    cohere_text_model: str = "command-r-plus-08-2024"
+    cohere_vision_model: str = "command-a-vision-07-2025"
+
     cors_allowed_origins: str = "http://localhost:5173"
 
     @property

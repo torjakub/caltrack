@@ -30,6 +30,15 @@ OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-...
 ```
 
+### `cohere`
+```
+LLM_PROVIDER=cohere
+COHERE_API_KEY=...
+COHERE_TEXT_MODEL=command-r-plus-08-2024
+COHERE_VISION_MODEL=command-a-vision-07-2025
+```
+Works with a free/trial-tier Cohere API key. The vision model handles OCR; text-only features use the text model.
+
 ### `ollama` (local, on your network)
 Run Ollama on a machine with enough CPU/RAM/GPU to serve models at reasonable speed — **not** the Raspberry Pi running the server, which isn't powerful enough. A Mac mini or similar always-on machine on the same LAN works well; the server just needs network access to it.
 

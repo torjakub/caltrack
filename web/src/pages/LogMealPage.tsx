@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import type { FormEvent } from "react";
+import type { ChangeEvent, FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { searchFoods, lookupBarcode, createCustomFood } from "../api/foods";
 import { createLogEntry } from "../api/logs";
 import { listRecipes } from "../api/recipes";
+import { getLlmStatus, ocrNutritionLabel } from "../api/llm";
 import type { FoodOut, MealType, RecipeOut } from "../api/types";
 import { ApiError } from "../api/client";
 
@@ -241,6 +242,34 @@ function CustomFoodForm({ onCreated }: { onCreated: (food: FoodOut) => void }) {
   const [carbs, setCarbs] = useState(0);
   const [fat, setFat] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [llmAvailable, setLlmAvailable] = useState(false);
+  const [scanning, setScanning] = useState(false);
+
+  useEffect(() => {
+    getLlmStatus()
+      .then((s) => setLlmAvailable(s.available))
+      .catch(() => setLlmAvailable(false));
+  }, []);
+
+  async function handlePhotoSelected(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setScanning(true);
+    setError(null);
+    try {
+      const result = await ocrNutritionLabel(file);
+      if (result.name) setName(result.name);
+      if (result.calories_kcal != null) setCalories(result.calories_kcal);
+      if (result.protein_g != null) setProtein(result.protein_g);
+      if (result.carbs_g != null) setCarbs(result.carbs_g);
+      if (result.fat_g != null) setFat(result.fat_g);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't read that label — enter values manually.");
+    } finally {
+      setScanning(false);
+      e.target.value = "";
+    }
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -261,6 +290,13 @@ function CustomFoodForm({ onCreated }: { onCreated: (food: FoodOut) => void }) {
 
   return (
     <form onSubmit={handleSubmit} className="custom-food-form">
+      {llmAvailable && (
+        <label>
+          Scan nutrition label (optional)
+          <input type="file" accept="image/*" onChange={handlePhotoSelected} disabled={scanning} />
+          {scanning && <span className="hint">Reading label…</span>}
+        </label>
+      )}
       <label>
         Name
         <input value={name} onChange={(e) => setName(e.target.value)} required />

@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { getDailySummary, deleteLogEntry } from "../api/logs";
 import { getProfile } from "../api/profile";
 import { getNutrientReference } from "../api/nutrients";
+import { getLlmStatus, mealReview, analysisDaily } from "../api/llm";
+import type { MealInsight, PeriodAnalysis } from "../api/llm";
 import type { DailySummary, MealType, NutrientReferenceOut } from "../api/types";
 import { ApiError } from "../api/client";
 
@@ -29,6 +31,7 @@ export function DashboardPage() {
   const [date, setDate] = useState<string | null>(null);
   const [summary, setSummary] = useState<DailySummary | null>(null);
   const [nutrientReference, setNutrientReference] = useState<NutrientReferenceOut[]>([]);
+  const [llmAvailable, setLlmAvailable] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -39,6 +42,9 @@ export function DashboardPage() {
     getNutrientReference()
       .then(setNutrientReference)
       .catch(() => setNutrientReference([]));
+    getLlmStatus()
+      .then((s) => setLlmAvailable(s.available))
+      .catch(() => setLlmAvailable(false));
   }, []);
 
   async function load() {
@@ -109,21 +115,28 @@ export function DashboardPage() {
             )}
           </div>
 
+          {llmAvailable && date && <DailyAnalysisSection date={date} />}
+
           {(Object.keys(MEAL_LABELS) as MealType[]).map((meal) => (
             <div key={meal} className="meal-section">
               <h3>{MEAL_LABELS[meal]}</h3>
               {entriesByMeal[meal].length === 0 && <p className="hint">Nothing logged</p>}
               <ul className="entry-list">
                 {entriesByMeal[meal].map((entry) => (
-                  <li key={entry.id}>
-                    <span>
-                      {entry.food?.name ?? entry.recipe_name ?? "Unknown"}
-                      {entry.quantity_g != null && ` — ${entry.quantity_g}g`}
-                      {entry.quantity_servings != null && ` — ${entry.quantity_servings} servings`}
-                    </span>
-                    <button className="link-button" onClick={() => handleDelete(entry.id)}>
-                      Remove
-                    </button>
+                  <li key={entry.id} style={{ flexDirection: "column", alignItems: "stretch" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", width: "100%" }}>
+                      <span>
+                        {entry.food?.name ?? entry.recipe_name ?? "Unknown"}
+                        {entry.quantity_g != null && ` — ${entry.quantity_g}g`}
+                        {entry.quantity_servings != null && ` — ${entry.quantity_servings} servings`}
+                      </span>
+                      <span style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                        {llmAvailable && <MealReviewButton logEntryId={entry.id} />}
+                        <button className="link-button" onClick={() => handleDelete(entry.id)}>
+                          Remove
+                        </button>
+                      </span>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -149,6 +162,97 @@ export function DashboardPage() {
         </>
       )}
     </div>
+  );
+}
+
+function DailyAnalysisSection({ date }: { date: string }) {
+  const [analysis, setAnalysis] = useState<PeriodAnalysis | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleAnalyze() {
+    setLoading(true);
+    setError(null);
+    try {
+      setAnalysis(await analysisDaily(date));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Analysis failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="targets-card">
+      <h3>Daily analysis</h3>
+      {!analysis && (
+        <button onClick={handleAnalyze} disabled={loading}>
+          {loading ? "Analyzing…" : "Analyze today"}
+        </button>
+      )}
+      {error && <p className="error">{error}</p>}
+      {analysis && (
+        <>
+          <p>{analysis.summary}</p>
+          {analysis.deficiencies.length > 0 && (
+            <>
+              <p className="hint">Gaps</p>
+              <ul>
+                {analysis.deficiencies.map((d, i) => (
+                  <li key={i}>
+                    {d.nutrient}: short {d.gap_amount} {d.unit} ({d.severity})
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          {analysis.suggestions.length > 0 && (
+            <>
+              <p className="hint">Suggestions</p>
+              <ul>
+                {analysis.suggestions.map((s, i) => (
+                  <li key={i}>
+                    <strong>{s.food}</strong> — {s.reason}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function MealReviewButton({ logEntryId }: { logEntryId: string }) {
+  const [insight, setInsight] = useState<MealInsight | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+
+  async function handleReview() {
+    setShowForm(true);
+    if (insight) return;
+    setLoading(true);
+    try {
+      setInsight(await mealReview(logEntryId));
+    } catch {
+      setInsight({ summary: "Review failed.", positives: [], concerns: [], suggestions: [] });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <span>
+      <button className="link-button" onClick={handleReview}>
+        Review
+      </button>
+      {showForm && (
+        <div className="hint" style={{ maxWidth: 280, textAlign: "right" }}>
+          {loading ? "Reviewing…" : insight?.summary}
+        </div>
+      )}
+    </span>
   );
 }
 
