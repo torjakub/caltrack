@@ -1,6 +1,6 @@
 # Architecture
 
-*Status: draft, expanded as the system is built out (see project milestones).*
+*Status: implemented and working end-to-end (server, web, mobile, sync, and optional LLM features). Test coverage and a real Raspberry Pi deployment are still outstanding — see the root README's Status section.*
 
 calTrack is three independently deployed components sharing one server-side source of truth:
 
@@ -16,7 +16,7 @@ calTrack is three independently deployed components sharing one server-side sour
                              \    /
                           [server: FastAPI + SQLite]  --  Open Food Facts / USDA (food lookup, cached locally)
                              |
-                        [LLM provider: none | anthropic | openai | ollama]
+                        [LLM provider: none | anthropic | openai | cohere | ollama]
                              |
                      ollama -> separate LAN host (e.g. Mac mini), not the Pi
 ```

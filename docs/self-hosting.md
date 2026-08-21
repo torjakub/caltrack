@@ -1,6 +1,6 @@
 # Self-hosting
 
-*Status: draft — will be expanded/verified against the real deployment in milestone M6.*
+*Status: the Dockerfiles/compose config follow standard patterns and the app itself is verified working, but this guide hasn't yet been walked through end-to-end against a real Raspberry Pi (developed and tested on a Mac without Docker installed). If something here doesn't match reality, please open an issue.*
 
 ## Requirements
 
@@ -30,17 +30,26 @@ docker compose up -d
 - API: `http://<pi-ip>:8000`
 - Web app: `http://<pi-ip>:5173`
 
-On first run, create the initial (owner) account via `POST /api/v1/auth/setup` — this only works while the database has zero users.
+On first run, open the web app and use "First-time setup" to create the initial account (this calls `POST /api/v1/auth/setup`, which only works while the database has zero users — so only the first person to open the app can create an account this way).
 
-## Backup
+## Backup and restore
 
 The entire database is one file at `./data/caltrack.db` (bind-mounted from the `server` container). Back it up with:
 
 ```bash
+mkdir -p ./backups
 sqlite3 ./data/caltrack.db ".backup './backups/caltrack-$(date +%F).db'"
 ```
 
 Do this instead of copying the file directly while the server is running, to avoid grabbing it mid-write.
+
+To restore, stop the stack, replace the file, then start it back up:
+
+```bash
+docker compose down
+cp ./backups/caltrack-2026-08-21.db ./data/caltrack.db
+docker compose up -d
+```
 
 ## Mobile app
 

@@ -3,6 +3,7 @@ USDA FoodData Central (generic foods), caching any external fetch into the
 local `foods`/`food_nutrients` tables so subsequent lookups are DB-only.
 """
 
+import re
 from datetime import datetime, timezone
 
 import httpx
@@ -202,14 +203,23 @@ def fetch_off_by_barcode(db: Session, barcode: str) -> Food | None:
     )
 
 
+_SERVING_SIZE_GRAMS_RE = re.compile(r"(\d+(?:\.\d+)?)\s*g\b", re.IGNORECASE)
+_SERVING_SIZE_ANY_NUMBER_RE = re.compile(r"\d+(?:\.\d+)?")
+
+
 def _parse_serving_grams(serving_size: str | None) -> float | None:
+    """Extracts the gram amount from a serving-size label. OFF's
+    serving_size field is free text like "30 g" or "1 slice (30g)" — prefer
+    the number actually attached to a "g" unit (30) over an unrelated count
+    earlier in the string (the "1" in "1 slice"), falling back to the first
+    number found if no explicit gram unit is present."""
     if not serving_size:
         return None
-    digits = "".join(ch for ch in serving_size if ch.isdigit() or ch == ".")
-    try:
-        return float(digits) if digits else None
-    except ValueError:
-        return None
+    grams_match = _SERVING_SIZE_GRAMS_RE.search(serving_size)
+    if grams_match:
+        return float(grams_match.group(1))
+    any_number_match = _SERVING_SIZE_ANY_NUMBER_RE.search(serving_size)
+    return float(any_number_match.group()) if any_number_match else None
 
 
 def search_usda(db: Session, query: str, limit: int = 10) -> list[Food]:
