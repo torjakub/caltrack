@@ -3,7 +3,7 @@ import { create } from "zustand";
 import { db } from "../db/client";
 import { localMeta } from "../db/schema";
 import { newUuid } from "../lib/uuid";
-import { getToken, setToken } from "../api/client";
+import { getToken, setRefreshToken, setToken } from "../api/client";
 
 interface SessionState {
   hydrated: boolean;
@@ -14,7 +14,12 @@ interface SessionState {
   isAuthenticated: boolean;
   hydrate: () => Promise<void>;
   setServerBaseUrl: (url: string) => Promise<void>;
-  setLoggedIn: (params: { userId: string; accessToken: string; timezone?: string }) => Promise<void>;
+  setLoggedIn: (params: {
+    userId: string;
+    accessToken: string;
+    refreshToken?: string;
+    timezone?: string;
+  }) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -55,8 +60,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({ serverBaseUrl: url });
   },
 
-  setLoggedIn: async ({ userId, accessToken, timezone }) => {
+  setLoggedIn: async ({ userId, accessToken, refreshToken, timezone }) => {
     await setToken(accessToken);
+    if (refreshToken) await setRefreshToken(refreshToken);
     await db
       .update(localMeta)
       .set({ userId, ...(timezone ? { timezone } : {}) })
@@ -66,6 +72,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   logout: async () => {
     await setToken(null);
+    await setRefreshToken(null);
     await db.update(localMeta).set({ userId: null }).where(eq(localMeta.id, 1));
     set({ userId: null, isAuthenticated: false });
   },

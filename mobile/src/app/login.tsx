@@ -63,7 +63,12 @@ export default function LoginScreen() {
           ? await authApi.login(username, password)
           : await authApi.setup(username, password, timezone);
       const userId = authApi.decodeUserIdFromToken(tokens.access_token);
-      await setLoggedIn({ userId, accessToken: tokens.access_token, timezone });
+      await setLoggedIn({
+        userId,
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        timezone,
+      });
       await bootstrapAfterLogin();
     } catch (err) {
       if (err instanceof ApiError && mode === "setup" && err.status === 403) {
@@ -98,7 +103,7 @@ export default function LoginScreen() {
               value={serverUrlInput}
               onChangeText={setServerUrlInput}
             />
-            <Text style={styles.hint}>Your home server's LAN address, e.g. from the Pi.</Text>
+            <Text style={styles.hint}>Your home server’s LAN address, e.g. from the Pi.</Text>
             <TouchableOpacity style={styles.button} onPress={handleConnect}>
               <Text style={styles.buttonText}>Continue</Text>
             </TouchableOpacity>

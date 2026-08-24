@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import * as authApi from "../api/auth";
-import { getToken, setToken } from "../api/client";
+import { getToken, setRefreshToken, setToken } from "../api/client";
 import type { UserOut } from "../api/types";
 
 interface AuthContextValue {
@@ -27,7 +27,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       setUser(await authApi.me());
     } catch {
+      // apiFetch already tried a refresh-and-retry; if we still failed the
+      // session is unrecoverable (refresh token expired/revoked).
       setToken(null);
+      setRefreshToken(null);
       setUser(null);
     } finally {
       setLoading(false);
@@ -42,6 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (username: string, password: string) => {
       const tokens = await authApi.login(username, password);
       setToken(tokens.access_token);
+      setRefreshToken(tokens.refresh_token);
       await loadUser();
     },
     [loadUser]
@@ -51,6 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (username: string, password: string, email?: string) => {
       const tokens = await authApi.setup(username, password, email);
       setToken(tokens.access_token);
+      setRefreshToken(tokens.refresh_token);
       await loadUser();
     },
     [loadUser]
@@ -58,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     setToken(null);
+    setRefreshToken(null);
     setUser(null);
   }, []);
 
