@@ -4,7 +4,7 @@
 
 ## Requirements
 
-- A Raspberry Pi (or any always-on Linux machine on your home network) with Docker and Docker Compose installed.
+- A Raspberry Pi (or any always-on Linux machine on your home network) with Docker and Docker Compose installed. **Use a 64-bit OS** (Raspberry Pi OS 64-bit, Ubuntu, etc.) — a pinned dependency (`bcrypt`) has no prebuilt wheel for 32-bit armv7 and its source build needs Rust, which the image doesn't ship.
 - Optionally, a second machine on the same network running [Ollama](https://ollama.com) if you want local-LLM features without calling a cloud API (see [`llm-providers.md`](llm-providers.md)).
 
 ## Setup

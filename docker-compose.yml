@@ -25,5 +25,5 @@ services:
       server:
         condition: service_healthy
     ports:
-      - "5173:80"
+      - "5173:8080"
     restart: unless-stopped

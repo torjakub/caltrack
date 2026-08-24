@@ -151,10 +151,46 @@ async function upsertRow(
 ): Promise<void> {
   const existing = await db.select().from(table as any).where(eq((table as any).id, id)).limit(1);
   if (existing.length > 0) {
+    // Lost-update guard: if the local row is NEWER than the incoming server
+    // row, an edit landed between the dirty-scan (which captured what we
+    // just pushed) and this apply. Overwriting it here would silently drop
+    // that edit — and it wouldn't even register as a conflict, because the
+    // checkpoint advances either way. Keep local; it's still dirty and goes
+    // out with the next push.
+    const localUpdatedAt = (existing[0] as { updatedAt?: unknown }).updatedAt;
+    const incomingAt = parseEpoch(values.updatedAt);
+    const localAt = parseEpoch(localUpdatedAt);
+    if (incomingAt !== null && localAt !== null && localAt > incomingAt) return;
     await db.update(table as any).set(values).where(eq((table as any).id, id));
   } else {
     await db.insert(table as any).values({ id, ...values });
   }
+}
+
+function parseEpoch(value: unknown): number | null {
+  if (typeof value !== "string") return null;
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) ? null : ms;
+}
+
+/** See the lost-update guard in upsertRow: true when the local row is newer
+ * than the incoming server row and applying would silently drop local work. */
+async function localRowNewer(
+  table:
+    | typeof foods
+    | typeof foodNutrients
+    | typeof foodMicronutrients
+    | typeof userProfile
+    | typeof userTargets
+    | typeof recipes
+    | typeof logEntries,
+  id: string,
+  incomingUpdatedAt: unknown
+): Promise<boolean> {
+  const rows = await db.select().from(table as any).where(eq((table as any).id, id)).limit(1);
+  const localAt = parseEpoch((rows[0] as { updatedAt?: unknown } | undefined)?.updatedAt);
+  const incomingAt = parseEpoch(incomingUpdatedAt);
+  return localAt !== null && incomingAt !== null && localAt > incomingAt;
 }
 
 export async function applyServerChanges(serverChanges: SyncChanges): Promise<void> {
@@ -230,6 +266,9 @@ export async function applyServerChanges(serverChanges: SyncChanges): Promise<vo
   }
 
   for (const r of serverChanges.recipes) {
+    // Items sync as replace-all with their parent, so if we're keeping a
+    // newer local recipe row, its items must be left untouched too.
+    if (await localRowNewer(recipes, r.id as string, r.updated_at)) continue;
     await upsertRow(recipes, r.id as string, {
       userId: r.user_id,
       name: r.name,

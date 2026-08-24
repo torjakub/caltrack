@@ -66,8 +66,12 @@ export function DashboardPage() {
   }, [date]);
 
   async function handleDelete(id: string) {
-    await deleteLogEntry(id);
-    load();
+    try {
+      await deleteLogEntry(id);
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to delete entry");
+    }
   }
 
   const entriesByMeal: Record<MealType, typeof summary extends null ? never : DailySummary["entries"]> =
