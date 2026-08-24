@@ -48,7 +48,7 @@ Pluggable, fully optional (`LLM_PROVIDER=none` default, app is 100% usable witho
 cd server && .venv/bin/pip install -r requirements-dev.txt
 DATABASE_URL="sqlite:///./caltrack_dev.db" .venv/bin/alembic upgrade head
 DATABASE_URL="sqlite:///./caltrack_dev.db" JWT_SECRET=dev-secret .venv/bin/uvicorn app.main:app --reload
-.venv/bin/pytest tests/                       # 29 tests, sync_engine + nutrition_calc + food_lookup
+.venv/bin/pytest tests/                       # 51 tests: services layer + router-level (auth/ownership/sync validation/timezone bucketing)
 
 # web
 cd web && npm run dev                          # points at localhost:8000 by default

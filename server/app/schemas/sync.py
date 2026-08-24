@@ -1,17 +1,49 @@
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, BeforeValidator
+
+
+def _check_records(value: Any) -> Any:
+    """Turn malformed records into clean 422s instead of KeyErrors/ValueErrors
+    deep inside sync_engine."""
+    if not isinstance(value, list):
+        return value
+    for record in value:
+        if not isinstance(record, dict):
+            raise ValueError("each sync record must be an object")
+        if not isinstance(record.get("id"), str) or not record["id"]:
+            raise ValueError("each sync record needs a non-empty string 'id'")
+        if "updated_at" not in record:
+            raise ValueError(f"record {record.get('id')} needs an 'updated_at' field")
+    return value
+
+
+def _check_record(record: Any) -> Any:
+    """Same checks as _check_records but for a single optional record."""
+    if record is None:
+        return None
+    if not isinstance(record, dict):
+        raise ValueError("sync record must be an object")
+    if not isinstance(record.get("id"), str) or not record["id"]:
+        raise ValueError("sync record needs a non-empty string 'id'")
+    if "updated_at" not in record:
+        raise ValueError(f"record {record.get('id')} needs an 'updated_at' field")
+    return record
+
+
+RecordList = Annotated[list[dict[str, Any]], BeforeValidator(_check_records)]
+OptionalRecord = Annotated[dict[str, Any] | None, BeforeValidator(_check_record)]
 
 
 class SyncChanges(BaseModel):
-    user_profile: list[dict[str, Any]] = []
-    user_targets: list[dict[str, Any]] = []
-    foods: list[dict[str, Any]] = []
-    food_nutrients: list[dict[str, Any]] = []
-    food_micronutrients: list[dict[str, Any]] = []
-    recipes: list[dict[str, Any]] = []
-    log_entries: list[dict[str, Any]] = []
+    user_profile: RecordList = []
+    user_targets: RecordList = []
+    foods: RecordList = []
+    food_nutrients: RecordList = []
+    food_micronutrients: RecordList = []
+    recipes: RecordList = []
+    log_entries: RecordList = []
 
 
 class SyncRequest(BaseModel):
@@ -37,10 +69,18 @@ class SyncResponse(BaseModel):
 
 
 class SyncResolution(BaseModel):
-    entity_type: str
+    entity_type: Literal[
+        "user_profile",
+        "user_targets",
+        "foods",
+        "food_nutrients",
+        "food_micronutrients",
+        "recipes",
+        "log_entries",
+    ]
     id: str
     resolution: Literal["mine", "theirs", "manual"]
-    record: dict[str, Any] | None = None
+    record: OptionalRecord = None
 
 
 class SyncResolveRequest(BaseModel):

@@ -108,6 +108,53 @@ TABLE_CONFIG: dict[str, tuple[type, list[str], list[str], list[str]]] = {
 # blindly from the client.
 USER_SCOPED_TABLES = {"user_profile", "user_targets", "log_entries"}
 
+NUTRIENT_TABLES = {"food_nutrients", "food_micronutrients"}
+
+
+class SyncPushError(ValueError):
+    """A pushed record violates a server-side invariant (bad shape, or writes
+    to rows the client doesn't own). Raised as ValueError so callers treat it
+    as an invalid payload; the router maps it to a 422."""
+
+
+def _require_record_shape(table_name: str, record: dict[str, Any]) -> None:
+    if not isinstance(record.get("id"), str) or not record["id"]:
+        raise SyncPushError(f"{table_name}: record missing non-empty string 'id'")
+    if "updated_at" not in record:
+        raise SyncPushError(f"{table_name} {record['id']}: record missing 'updated_at'")
+
+
+def _validate_food_push(record: dict[str, Any], user_id: str) -> None:
+    # Custom foods are the only foods a device ever pushes, and only ones it
+    # created for this user (docs/sync-protocol.md). Cached external
+    # (OFF/USDA) foods are read-only mirrors of what the server already has.
+    # Enforced here rather than trusting the client's dirty-scan scoping.
+    if not record.get("is_custom"):
+        raise SyncPushError(f"foods {record['id']}: only is_custom=true foods may be pushed")
+    if record.get("created_by_user_id") not in (None, user_id):
+        raise SyncPushError(
+            f"foods {record['id']}: created_by_user_id does not match the authenticated user"
+        )
+
+
+def _validate_existing_food_overwrite(existing: Food, record_id: str, user_id: str) -> None:
+    # Never let a push overwrite a row another user owns or a shared cached
+    # external food that other users' logs reference.
+    if not existing.is_custom or existing.created_by_user_id != user_id:
+        raise SyncPushError(
+            f"foods {record_id}: refusing to overwrite an existing food this user doesn't own"
+        )
+
+
+def _validate_nutrient_push(db: Session, table_name: str, record: dict[str, Any], user_id: str) -> None:
+    food = db.get(Food, record.get("food_id"))
+    if food is None:
+        raise SyncPushError(f"{table_name} {record['id']}: referenced food does not exist")
+    if not food.is_custom or food.created_by_user_id != user_id:
+        raise SyncPushError(
+            f"{table_name} {record['id']}: nutrients may only be written for this user's own custom foods"
+        )
+
 
 def _parse_value(field: str, value: Any, date_fields: list[str], datetime_fields: list[str]) -> Any:
     if value is None:
@@ -167,11 +214,20 @@ def _apply_simple_table(
 ) -> None:
     model, fields, date_fields, datetime_fields = TABLE_CONFIG[table_name]
     for record in records:
+        _require_record_shape(table_name, record)
         record_id = record["id"]
         existing = db.get(model, record_id)
 
         if table_name in USER_SCOPED_TABLES:
             record["user_id"] = user_id
+
+        if table_name == "foods":
+            _validate_food_push(record, user_id)
+            record["created_by_user_id"] = user_id
+            if existing is not None:
+                _validate_existing_food_overwrite(existing, record_id, user_id)
+        elif table_name in NUTRIENT_TABLES:
+            _validate_nutrient_push(db, table_name, record, user_id)
 
         if existing is None or since is None or existing.updated_at <= since:
             new_updated_at = _parse_dt(record["updated_at"]) or _to_naive_utc(datetime.now(timezone.utc))
@@ -211,8 +267,16 @@ def _apply_recipes(
 ) -> None:
     fields = ["name", "servings", "instructions"]
     for record in records:
+        _require_record_shape("recipes", record)
+        for item in record.get("items", []):
+            if not isinstance(item.get("food_id"), str) or not item["food_id"]:
+                raise SyncPushError(f"recipes {record['id']}: item missing 'food_id'")
+            if item.get("quantity_g") is None:
+                raise SyncPushError(f"recipes {record['id']}: item missing 'quantity_g'")
         record_id = record["id"]
         existing = db.get(Recipe, record_id)
+        if existing is not None and existing.user_id != user_id:
+            raise SyncPushError(f"recipes {record_id}: refusing to overwrite another user's recipe")
         record["user_id"] = user_id
 
         if existing is None or since is None or existing.updated_at <= since:

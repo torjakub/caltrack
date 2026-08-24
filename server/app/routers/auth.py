@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.security import (
@@ -16,12 +16,14 @@ from app.models.user import User
 from app.models.user_profile import UserProfile
 from app.schemas.auth import LoginRequest, RefreshRequest, SetupRequest, TokenPair, UserOut
 from app.services.auth_service import get_current_user
+from app.services.rate_limit import enforce_rate_limit
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 
 @router.post("/setup", response_model=TokenPair, status_code=status.HTTP_201_CREATED)
-def setup(payload: SetupRequest, db: Session = Depends(get_db)) -> TokenPair:
+def setup(payload: SetupRequest, request: Request, db: Session = Depends(get_db)) -> TokenPair:
+    enforce_rate_limit(request, bucket="setup")
     if db.query(User).count() > 0:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Setup already complete")
 
@@ -52,7 +54,8 @@ def setup(payload: SetupRequest, db: Session = Depends(get_db)) -> TokenPair:
 
 
 @router.post("/login", response_model=TokenPair)
-def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenPair:
+def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)) -> TokenPair:
+    enforce_rate_limit(request, bucket="login")
     user = db.query(User).filter(User.username == payload.username).first()
     if user is None or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")

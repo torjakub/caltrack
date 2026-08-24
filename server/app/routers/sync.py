@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -13,13 +13,24 @@ from app.services.auth_service import get_current_user
 router = APIRouter(prefix="/api/v1/sync", tags=["sync"])
 
 
+def _apply_push_or_422(db: Session, *, changes: dict, user_id: str, since: datetime | None):
+    # The schema validators catch most malformed payloads; this catches the
+    # remainder (bad ISO dates etc.) so clients get an actionable 422 instead
+    # of an opaque 500. Nothing has been committed at this point, so a raise
+    # here leaves no partial writes.
+    try:
+        return sync_engine.apply_push(db, changes=changes, user_id=user_id, since=since)
+    except sync_engine.SyncPushError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
+
+
 @router.post("", response_model=SyncResponse)
 def sync(
     payload: SyncRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> SyncResponse:
-    applied, conflicts = sync_engine.apply_push(
+    applied, conflicts = _apply_push_or_422(
         db,
         changes=payload.changes.model_dump(),
         user_id=current_user.id,
@@ -66,7 +77,7 @@ def resolve(
     # since=None forces every record through (bypasses conflict detection —
     # the user already made the call), matching docs/sync-protocol.md's
     # "applied as a new write" resolution semantics.
-    applied, _ = sync_engine.apply_push(db, changes=changes, user_id=current_user.id, since=None)
+    applied, _ = _apply_push_or_422(db, changes=changes, user_id=current_user.id, since=None)
 
     synced_at = datetime.now(timezone.utc)
     device = db.query(Device).filter(Device.user_id == current_user.id, Device.device_id == payload.device_id).first()

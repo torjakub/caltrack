@@ -32,6 +32,10 @@ from app.services.auth_service import get_current_user
 from app.services.nutrition_calc import calculate_age_years, compute_nutrient_gaps
 from app.services.recipe_calc import recipe_nutrients_per_serving
 
+# 10 MB is far above any real nutrition-label photo; the cap exists purely to
+# stop a runaway upload from exhausting memory on a small device.
+MAX_IMAGE_BYTES = 10 * 1024 * 1024
+
 router = APIRouter(prefix="/api/v1/llm", tags=["llm"])
 
 
@@ -198,8 +202,20 @@ def ocr_nutrition_label(
     _current_user: User = Depends(get_current_user),
 ) -> OCRNutritionResult:
     provider = get_llm_provider()
+    # Read in bounded chunks so an oversized upload is rejected before it can
+    # exhaust memory on the Pi.
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = image.file.read(1024 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > MAX_IMAGE_BYTES:
+            raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Image too large (max 10 MB)")
+        chunks.append(chunk)
+    image_bytes = b"".join(chunks)
     try:
-        image_bytes = image.file.read()
         return provider.ocr_nutrition_label(image_bytes, image.content_type or "image/jpeg")
     except LLMUnavailableError as e:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail={"error": "llm_unavailable", "message": str(e)}) from e

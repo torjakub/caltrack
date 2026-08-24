@@ -6,6 +6,10 @@ class Settings(BaseSettings):
 
     database_url: str = "sqlite:////data/caltrack.db"
 
+    # "production" makes startup refuse to continue with an insecure JWT
+    # secret (see app.main). Only set this in real deployments.
+    environment: str = "development"
+
     jwt_secret: str = "dev-secret-change-me"
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 60

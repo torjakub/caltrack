@@ -119,6 +119,11 @@ def update_custom_food(
     food.updated_at = now
 
     nutrients = db.query(FoodNutrients).filter(FoodNutrients.food_id == food.id).first()
+    if nutrients is None:
+        # A food without a nutrients row is malformed data, but an update
+        # shouldn't 500 on it — create the missing row instead.
+        nutrients = FoodNutrients(id=new_uuid(), food_id=food.id)
+        db.add(nutrients)
     nutrients.calories_kcal = payload.calories_kcal
     nutrients.protein_g = payload.protein_g
     nutrients.carbs_g = payload.carbs_g
