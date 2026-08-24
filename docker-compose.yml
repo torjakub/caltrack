@@ -6,13 +6,24 @@ services:
       - "8000:8000"
     volumes:
       - ./data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     restart: unless-stopped
 
   web:
     build: ./web
-    env_file: .env
+    # Only API_BASE_URL is needed here (baked into config.js at startup);
+    # keeping .env off this container means secrets like JWT_SECRET and LLM
+    # keys stay out of the nginx container's environment.
+    environment:
+      API_BASE_URL: ${API_BASE_URL:-}
     depends_on:
-      - server
+      server:
+        condition: service_healthy
     ports:
       - "5173:80"
     restart: unless-stopped
