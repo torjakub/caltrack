@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 
 from app.db.base import new_uuid
 from app.models.log_entry import LogEntry
-from app.models.recipe import Recipe
 from app.models.recipe_item import RecipeItem
 from app.models.user import User
 from app.services import sync_engine

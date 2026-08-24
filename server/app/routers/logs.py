@@ -10,7 +10,6 @@ from app.models.food_nutrients import FoodNutrients
 from app.models.log_entry import LogEntry
 from app.models.user import User
 from app.models.user_profile import UserProfile
-from app.models.user_targets import UserTargets
 from app.routers.foods import _to_food_out
 from app.routers.targets import _get_active_targets
 from app.schemas.log_entry import (

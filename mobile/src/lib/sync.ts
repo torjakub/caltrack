@@ -4,10 +4,9 @@ import * as Device from "expo-device";
 import { db } from "../db/client";
 import { localMeta } from "../db/schema";
 import { useSessionStore } from "../store/session";
-import { postSync } from "../api/sync";
+import { postSync, postSyncResolve } from "../api/sync";
 import { collectDirtyChanges, applyServerChanges, emptyChanges } from "../db/repo/sync";
 import { stageConflicts, markConflictResolved, type StagedConflict } from "../db/repo/conflicts";
-import { postSyncResolve } from "../api/sync";
 
 export interface SyncResult {
   ok: boolean;

@@ -57,7 +57,7 @@ export default function ConflictsScreen() {
         </View>
 
         {conflicts.length === 0 && (
-          <Text style={styles.hint}>No conflicts — everything's in sync.</Text>
+          <Text style={styles.hint}>No conflicts — everything’s in sync.</Text>
         )}
 
         {conflicts.map((conflict) => (
@@ -115,14 +115,14 @@ function ConflictCard({
           onPress={() => onResolve("mine")}
           disabled={resolving}
         >
-          <Text style={styles.buttonText}>Keep this device's version</Text>
+          <Text style={styles.buttonText}>Keep this device’s version</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.button, styles.theirsButton]}
           onPress={() => onResolve("theirs")}
           disabled={resolving}
         >
-          <Text style={styles.buttonText}>Keep server's version</Text>
+          <Text style={styles.buttonText}>Keep server’s version</Text>
         </TouchableOpacity>
       </View>
       {resolving && <ActivityIndicator style={{ marginTop: 8 }} />}

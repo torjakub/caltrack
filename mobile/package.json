@@ -34,6 +34,8 @@
     "babel-plugin-inline-import": "^3.0.0",
     "babel-preset-expo": "~54.0.12",
     "drizzle-kit": "^0.31.6",
+    "eslint": "^9.0.0",
+    "eslint-config-expo": "~10.0.0",
     "typescript": "~5.9.2"
   },
   "scripts": {

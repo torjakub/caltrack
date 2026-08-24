@@ -1,0 +1,18 @@
+line-length = 150
+target-version = "py311"
+
+[lint]
+# E/F/W correctness basics, isort, pyupgrade, bugbear. Kept deliberately
+# conservative to match the existing codebase style (long descriptive lines,
+# `timezone.utc` alias) — tighten over time rather than mass-rewrite.
+select = ["E", "F", "W", "I", "B"]
+ignore = [
+  "UP017",
+  # `Depends(...)`/`Query(...)`/`File(...)` in parameter defaults is the
+  # idiomatic FastAPI dependency-injection pattern.
+  "B008",
+]
+
+[lint.per-file-ignores]
+# Alembic migrations are generated code; don't fight the tooling over them.
+"alembic/versions/*" = ["E501", "I001"]

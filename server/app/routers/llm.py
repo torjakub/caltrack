@@ -202,7 +202,7 @@ def ocr_nutrition_label(
         image_bytes = image.file.read()
         return provider.ocr_nutrition_label(image_bytes, image.content_type or "image/jpeg")
     except LLMUnavailableError as e:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail={"error": "llm_unavailable", "message": str(e)})
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail={"error": "llm_unavailable", "message": str(e)}) from e
 
 
 @router.post("/meal-review/{log_entry_id}", response_model=MealInsight)
@@ -221,7 +221,7 @@ def meal_review(
         user_context = _build_user_context(db, current_user.id)
         return provider.analyze_meal(nutrition_data, user_context)
     except LLMUnavailableError as e:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail={"error": "llm_unavailable", "message": str(e)})
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail={"error": "llm_unavailable", "message": str(e)}) from e
 
 
 @router.post("/analysis/daily", response_model=PeriodAnalysis)
@@ -236,7 +236,7 @@ def analysis_daily(
         user_context = _build_user_context(db, current_user.id)
         return provider.analyze_period(report, user_context)
     except LLMUnavailableError as e:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail={"error": "llm_unavailable", "message": str(e)})
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail={"error": "llm_unavailable", "message": str(e)}) from e
 
 
 @router.post("/analysis/weekly", response_model=PeriodAnalysis)
@@ -255,4 +255,4 @@ def analysis_weekly(
         user_context = _build_user_context(db, current_user.id)
         return provider.analyze_period(report, user_context)
     except LLMUnavailableError as e:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail={"error": "llm_unavailable", "message": str(e)})
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail={"error": "llm_unavailable", "message": str(e)}) from e
